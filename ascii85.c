@@ -1,6 +1,7 @@
 /*
  * ascii85 - Ascii85 encode/decode data and print to standard output
  *
+ * Copyright (C) 2017 Jeremiasz Nelz <remi6397[at]gmail[dot]com>.
  * Copyright (C) 2012-2016 Remy Oukaour <http://www.remyoukaour.com>.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -30,58 +31,37 @@
 #include <errno.h>
 #include <ctype.h>
 
-#define eprintf(...) fprintf(stderr, __VA_ARGS__)
+unsigned int AllocMax;
+char* Data;
+unsigned int Index;
+unsigned int IIndex;
 
-#define PROGRAM_NAME "ascii85"
+void append_char(int c)
+{
+	if (Index > 0 && (Index % AllocMax) == 0)
+	{
+		realloc(Data, (AllocMax *= 2));
+	}
+	Data[Index++] = c;
+}
 
-#define USAGE_TEXT (\
-	"usage: " PROGRAM_NAME " [OPTION]... [FILE]\n"\
-	"Enter '" PROGRAM_NAME " -h' for more information.\n")
+int get_char(char* ptr)
+{
+	return ptr[IIndex++];
+}
 
-#define HELP_TEXT (\
-	"NAME\n"\
-	"\t" PROGRAM_NAME " - Ascii85 encode/decode data and print to standard output\n"\
-	"\n"\
-	"SYNOPSIS\n"\
-	"\t" PROGRAM_NAME " [OPTION]... [FILE]\n"\
-	"\n"\
-	"DESCRIPTION\n"\
-	"\tAscii85 encode or decode FILE, or standard input, to standard output.\n"\
-	"\n"\
-	"\t-d, --decode\n"\
-	"\t\tdecode data (encodes by default)\n"\
-	"\n"\
-	"\t-i, --ignore-garbage\n"\
-	"\t\twhen decoding, ignore invalid characters\n"\
-	"\n"\
-	"\t-n, --no-delims\n"\
-	"\t\twhen encoding, omit delimiters (<~ and ~>), and when decoding,\n"\
-	"\t\tdo not look for delimiters\n"\
-	"\n"\
-	"\t-w, --wrap=COLS\n"\
-	"\t\twrap encoded lines after COLS characters (default 76).  Use 0\n"\
-	"\t\tto disable line wrapping.\n"\
-	"\n"\
-	"\t-y, --y-abbr\n"\
-	"\t\tabbreviates four encoded spaces as 'y'\n"\
-	"\n"\
-	"\t-h, --help\n"\
-	"\t\tdisplay this help and exit\n"\
-	"\n"\
-	"\tWith no FILE, or when FILE is -, read standard input.\n"\
-	"\n"\
-	"AUTHOR\n"\
-	"\tWritten by Remy Oukaour <remy.oukaour@gmail.com>.\n"\
-	"\n"\
-	"COPYRIGHT\n"\
-	"\tCopyright (C) 2012-2016 Remy Oukaour <http://www.remyoukaour.com>.\n"\
-	"\tMIT License.\n"\
-	"\tThis is free software: you are free to change and redistribute it.\n"\
-	"\tThere is NO WARRANTY, to the extent permitted by law.\n")
+int unget_char(char c, char* ptr)
+{
+	return (Data[--IIndex] = c);
+}
+
+#define putchar(c) append_char(c)
+#define getc(ptr) get_char(ptr)
+#define ungetc(c, ptr) unget_char(c, ptr)
 
 int powers[5] = {85*85*85*85, 85*85*85, 85*85, 85, 1};
 
-int getc_nospace(FILE *f) {
+int getc_nospace(char* f) {
 	int c;
 	while (isspace(c = getc(f)));
 	return c;
@@ -124,22 +104,29 @@ void decode_tuple(uint32_t tuple, int count) {
 	}
 }
 
-void ascii85_encode(FILE *fp, int delims, int wrap, int y_abbr) {
+int ascii85_encode(char** input_p, char** output_p, int delims, int wrap, int y_abbr) {
+	char* input = *input_p;
 	int c, count = 0, len = 0;
 	uint32_t tuple = 0;
+
+	AllocMax = 16;
+	Data = (char*)malloc(AllocMax);
+	Index = 0;
+	IIndex = 0;
+	
 	if (delims) {
 		putc_wrap('<', wrap, &len);
 		putc_wrap('~', wrap, &len);
 	}
 	for (;;) {
-		c = getc(fp);
-		if (c != EOF) {
+		c = getc(input);
+		if (c != '\0') {
 			tuple |= ((unsigned int)c) << ((3 - count++) * 8);
 			if (count < 4) continue;
 		}
 		else if (count == 0) break;
 		encode_tuple(tuple, count, wrap, &len, y_abbr);
-		if (c == EOF) break;
+		if (c == '\0') break;
 		tuple = 0;
 		count = 0;
 	}
@@ -147,25 +134,37 @@ void ascii85_encode(FILE *fp, int delims, int wrap, int y_abbr) {
 		putc_wrap('~', wrap, &len);
 		putc_wrap('>', wrap, &len);
 	}
+	
+	*output_p = (char*)malloc(Index+1);
+	memcpy(*output_p, Data, Index);
+	(*output_p)[Index] = '\0';
+
+	return 0;
 }
 
-void ascii85_decode(FILE *fp, int delims, int ignore_garbage) {
+int ascii85_decode(char** input_p, char** output_p, int delims, int ignore_garbage) {
+	char* input = *input_p;
 	int c, count = 0, end = 0;
 	uint32_t tuple = 0;
+
+	AllocMax = 16;
+	Data = (char*)malloc(AllocMax);
+	Index = 0;
+	IIndex = 0;
+	
 	while (delims) {
-		c = getc_nospace(fp);
+		c = getc_nospace(input);
 		if (c == '<') {
-			c = getc_nospace(fp);
+			c = getc_nospace(input);
 			if (c == '~') break;
-			ungetc(c, fp);
+			ungetc(c, input);
 		}
-		else if (c == EOF) {
-			eprintf(PROGRAM_NAME ": missing <~\n");
-			exit(1);
+		else if (c == '\0') {
+			return 1;
 		}
 	}
 	for (;;) {
-		c = getc_nospace(fp);
+		c = getc_nospace(input);
 		if (c == 'z' && count == 0) {
 			decode_tuple(0, 5);
 			continue;
@@ -175,18 +174,16 @@ void ascii85_decode(FILE *fp, int delims, int ignore_garbage) {
 			continue;
 		}
 		if (c == '~' && delims) {
-			c = getc_nospace(fp);
+			c = getc_nospace(input);
 			if (c != '>') {
-				eprintf(PROGRAM_NAME ": ~ without >\n");
-				exit(1);
+				return 1;
 			}
-			c = EOF;
+			c = '\0';
 			end = 1;
 		}
-		if (c == EOF) {
+		if (c == '\0') {
 			if (delims && !end) {
-				eprintf(PROGRAM_NAME ": missing ~>\n");
-				exit(1);
+				return 1;
 			}
 			if (count > 0) {
 				tuple += powers[count-1];
@@ -196,8 +193,7 @@ void ascii85_decode(FILE *fp, int delims, int ignore_garbage) {
 		}
 		if (c < '!' || c > 'u') {
 			if (ignore_garbage) continue;
-			eprintf(PROGRAM_NAME ": invalid character '%c'\n", c);
-			exit(1);
+			return 1;
 		}
 		tuple += (c - '!') * powers[count++];
 		if (count == 5) {
@@ -206,61 +202,10 @@ void ascii85_decode(FILE *fp, int delims, int ignore_garbage) {
 			count = 0;
 		}
 	}
-}
+	
+	*output_p = (char*)malloc(Index+1);
+	memcpy(*output_p, Data, Index);
+	(*output_p)[Index] = '\0';
 
-int main(int argc, char *argv[]) {
-	int opt, long_optind;
-	int decode = 0, ignore_garbage = 0, delims = 1, wrap = 76, y_abbr = 0;
-	FILE *fp = stdin;
-	char *opts = "dinw:yh";
-	struct option long_opts[] = {
-		{"decode", no_argument, NULL, 'd'},
-		{"ignore-garbage", no_argument, NULL, 'i'},
-		{"no-delims", no_argument, NULL, 'n'},
-		{"wrap", required_argument, NULL, 'w'},
-		{"y-abbr", no_argument, NULL, 'y'},
-		{"help", no_argument, NULL, 'h'},
-		{NULL, no_argument, NULL, 0}
-	};
-	opterr = 0;
-	while ((opt = getopt_long(argc, argv, opts, long_opts, &long_optind)) != -1) {
-		switch (opt) {
-			case 'd': decode = 1; break;
-			case 'i': ignore_garbage = 1; break;
-			case 'n': delims = 0; break;
-			case 'w': sscanf(optarg, "%d", &wrap); break;
-			case 'y': y_abbr = 1; break;
-			case 'h': printf(HELP_TEXT); exit(0);
-			case '?':
-				eprintf(PROGRAM_NAME ": ");
-				if (strchr("w", optopt) != NULL)
-					eprintf("option '-%c' requires an argument\n", optopt);
-				else
-					eprintf("invalid option -- %c\n", optopt);
-				eprintf(USAGE_TEXT);
-				exit(1);
-			default: break;
-		}
-	}
-	if (optind == argc - 1 && strcmp(argv[optind], "-")) {
-		fp = fopen(argv[optind], "rb");
-		if (fp == NULL) {
-			eprintf(PROGRAM_NAME ": %s: %s\n", argv[optind], strerror(errno));
-			exit(1);
-		}
-	}
-	else if (optind > argc) {
-		eprintf(PROGRAM_NAME ": too many operands or wrong operand order\n");
-		eprintf(USAGE_TEXT);
-		exit(1);
-	}
-	setbuf(fp, NULL);
-	if (wrap < 1) wrap = 0;
-	if (decode)
-		ascii85_decode(fp, delims, ignore_garbage);
-	else
-		ascii85_encode(fp, delims, wrap, y_abbr);
-	fflush(stdout);
-	fclose(fp);
 	return 0;
 }
