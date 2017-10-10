@@ -30,6 +30,7 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+#include "ascii85.h"
 
 unsigned int AllocMax;
 char* Data;
