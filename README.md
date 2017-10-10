@@ -57,6 +57,7 @@ AUTHOR
         Written by Remy Oukaour <remy.oukaour@gmail.com>.
 
 COPYRIGHT
+        Copyright (C) 2017 Jeremiasz Nelz <remi6397[at]gmail[dot]com>.
         Copyright (C) 2012-2016 Remy Oukaour <http://www.remyoukaour.com>.
         MIT License.
         This is free software: you are free to change and redistribute it.
