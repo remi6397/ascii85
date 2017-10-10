@@ -1,4 +1,4 @@
-TARGET = ascii85
+TARGET = ascii85.o
 
 CC = gcc
 CFLAGS = -std=c11 -Wall -Wextra -pedantic -O3
@@ -9,7 +9,7 @@ RM = rm -f
 all: $(TARGET)
 
 $(TARGET): ascii85.c
-	$(CC) $(CFLAGS) -o $@ $<
+	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	$(RM) $(TARGET) $(TARGET).exe
+	$(RM) $(TARGET)
