@@ -33,27 +33,30 @@
 #include "ascii85.h"
 
 unsigned int AllocMax;
-char* Data;
+uint8_t* Data;
 unsigned int Index;
 unsigned int IIndex;
+size_t Ntc;
+int NtcOn;
 
-void append_char(int c)
+void append_char(uint8_t c)
 {
-	if (Index > 0 && (Index % AllocMax) == 0)
+	if (Index > 0 && (Index % 16) == 0)
 	{
-		realloc(Data, (AllocMax *= 2));
+		Data = (uint8_t*)realloc(Data, (AllocMax += 16));
 	}
 	Data[Index++] = c;
 }
 
-int get_char(char* ptr)
+int get_char(uint8_t* ptr)
 {
+	if (NtcOn && Ntc == IIndex-1) return '\0';
 	return ptr[IIndex++];
 }
 
-int unget_char(char c, char* ptr)
+int unget_char(uint8_t c, uint8_t* ptr)
 {
-	return (Data[--IIndex] = c);
+	return (ptr[--IIndex]); //
 }
 
 #define putchar(c) append_char(c)
@@ -62,13 +65,13 @@ int unget_char(char c, char* ptr)
 
 int powers[5] = {85*85*85*85, 85*85*85, 85*85, 85, 1};
 
-int getc_nospace(char* f) {
+int getc_nospace(uint8_t* f) {
 	int c;
 	while (isspace(c = getc(f)));
 	return c;
 }
 
-void putc_wrap(char c, int wrap, int *len) {
+void putc_wrap(uint8_t c, int wrap, int *len) {
 	if (wrap && *len >= wrap) {
 		putchar('\n');
 		*len = 0;
@@ -105,15 +108,17 @@ void decode_tuple(uint32_t tuple, int count) {
 	}
 }
 
-int ascii85_encode(char** input_p, char** output_p, int delims, int wrap, int y_abbr) {
-	char* input = *input_p;
+int ascii85_encode(uint8_t** input_p, char** output_p, size_t ntc, int delims, int wrap, int y_abbr) {
+	uint8_t* input = *input_p;
 	int c, count = 0, len = 0;
 	uint32_t tuple = 0;
 
 	AllocMax = 16;
-	Data = (char*)malloc(AllocMax);
+	Data = (uint8_t*)malloc(AllocMax);
 	Index = 0;
 	IIndex = 0;
+	Ntc = ntc+1;
+	NtcOn = 1;
 	
 	if (delims) {
 		putc_wrap('<', wrap, &len);
@@ -121,13 +126,13 @@ int ascii85_encode(char** input_p, char** output_p, int delims, int wrap, int y_
 	}
 	for (;;) {
 		c = getc(input);
-		if (c != '\0') {
+		if (IIndex != Ntc) {
 			tuple |= ((unsigned int)c) << ((3 - count++) * 8);
 			if (count < 4) continue;
 		}
 		else if (count == 0) break;
 		encode_tuple(tuple, count, wrap, &len, y_abbr);
-		if (c == '\0') break;
+		if (IIndex == Ntc) break;
 		tuple = 0;
 		count = 0;
 	}
@@ -143,15 +148,17 @@ int ascii85_encode(char** input_p, char** output_p, int delims, int wrap, int y_
 	return 0;
 }
 
-int ascii85_decode(char** input_p, char** output_p, int delims, int ignore_garbage) {
-	char* input = *input_p;
+int ascii85_decode(char** input_p, uint8_t** output_p, int delims, int ignore_garbage) {
+	uint8_t* input = (uint8_t*)*input_p;
 	int c, count = 0, end = 0;
 	uint32_t tuple = 0;
-
+	
 	AllocMax = 16;
-	Data = (char*)malloc(AllocMax);
+	Data = (uint8_t*)malloc(AllocMax);
 	Index = 0;
 	IIndex = 0;
+	Ntc = 0;
+	NtcOn = 0;
 	
 	while (delims) {
 		c = getc_nospace(input);
@@ -204,9 +211,8 @@ int ascii85_decode(char** input_p, char** output_p, int delims, int ignore_garba
 		}
 	}
 	
-	*output_p = (char*)malloc(Index+1);
+	*output_p = (uint8_t*)malloc(Index);
 	memcpy(*output_p, Data, Index);
-	(*output_p)[Index] = '\0';
 
 	return 0;
 }
