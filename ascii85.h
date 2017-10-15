@@ -29,7 +29,14 @@
 #ifndef ASCII85_H
 #define ASCII85_H 1
 
+#ifdef __cplusplus
+extern "C"{
+#endif
+	
 int ascii85_encode(uint8_t** input_p, char** output_p, size_t ntc, int delims, int wrap, int y_abbr);
 int ascii85_decode(char** input_p, uint8_t** output_p, int delims, int ignore_garbage);
-
+	
+#ifdef __cplusplus
+}
+#endif 
 #endif
